@@ -9,8 +9,8 @@
 #
 #   Quality assessment:
 #     Track with AccurateRip status "Accurate" is good, regardless of "Secure" status.
-#     Track with AccurateRip status "Inaccurate" or "Not in database" is better if
-#     it has "Secure: Yes", but may still be good if it does not have "Secure: Yes".
+#     Track with "Secure: Yes" status is good, even if AccurateRip status "Inaccurate" or "Not in database"
+#     Track with neither Accurate nor Secure status is unknown - need to verify by listening to rip
 
 from curses import meta
 import logging
