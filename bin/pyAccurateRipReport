@@ -305,25 +305,33 @@ def main():
     accurate_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "accurate")
     inaccurate_but_secure_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "inaccurate" and track.secure == "yes")
     not_in_database_but_secure_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "not in database" and track.secure == "yes")
-    print("\nSummary of AccurateRip and Secure status:")
-    print("-"*40)
+
     good_tracks = accurate_tracks + inaccurate_but_secure_tracks + not_in_database_but_secure_tracks
-    print(f"  {good_tracks:6} tracks out of {tracks_count} ({good_tracks/tracks_count*100:.1f}%) are GOOD (Accurate or Secure rip)")
-    print(f"  {tracks_count - good_tracks:6} tracks out of {tracks_count} ({(tracks_count - good_tracks)/tracks_count*100:.1f}%) might be usable, please verify (Inaccurate and not Secure)\n")
 
-    # not_in_database_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "not in database")
-    # inaccurate_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "inaccurate")
-    # secure_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.secure == "yes")
-    # insecure_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.secure == "no")
-    # print(f"  {accurate_tracks:6} tracks are 'Accurate' according to AccurateRip DB")
-    # print(f"  {inaccurate_tracks:6} tracks are 'Inaccurate' according to AccurateRip DB")
-    # print(f"  {not_in_database_tracks:6} tracks are not in the AccurateRip DB\n")
-    # print(f"  {inaccurate_but_secure_tracks:6} tracks are 'Inaccurate' but 'Secure' according to the drive C2 pointers")
-    # print(f"  {accurate_tracks + inaccurate_tracks:6} out of {tracks_count} tracks have AccurateRip status, of which {inaccurate_but_secure_tracks} are 'Inaccurate' but 'Secure'")
-    # print(f"  {secure_tracks:6} tracks are 'Secure' according to the drive C2 pointers")
-    # print(f"  {insecure_tracks:6} tracks are not 'Secure' according to the drive C2 pointers")
+    if tracks_count > 0:
+        report_bad_albums(artists)
+        print("\nSummary of AccurateRip and Secure status:")
+        print("-"*40)
+        print(f"  {good_tracks:6} tracks out of {tracks_count} ({good_tracks/tracks_count*100:.1f}%) are GOOD (Accurate or Secure rip)")
+        print(f"         {accurate_tracks:6} tracks out of {tracks_count} ({accurate_tracks/tracks_count*100:.1f}%) are Accurate")
+        print(f"         {inaccurate_but_secure_tracks:6} tracks out of {tracks_count} ({inaccurate_but_secure_tracks/tracks_count*100:.1f}%) are Secure (Inaccurate)")
+        print(f"         {not_in_database_but_secure_tracks:6} tracks out of {tracks_count} ({not_in_database_but_secure_tracks/tracks_count*100:.1f}%) are Secure (Not in Database)\n")
 
-    report_bad_albums(artists)
+        print(f"  {tracks_count - good_tracks:6} tracks out of {tracks_count} ({(tracks_count - good_tracks)/tracks_count*100:.1f}%) might be usable, please verify (Inaccurate and not Secure)\n")
+
+        # not_in_database_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "not in database")
+        # inaccurate_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "inaccurate")
+        # secure_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.secure == "yes")
+        # insecure_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.secure == "no")
+        # print(f"  {accurate_tracks:6} tracks are 'Accurate' according to AccurateRip DB")
+        # print(f"  {inaccurate_tracks:6} tracks are 'Inaccurate' according to AccurateRip DB")
+        # print(f"  {not_in_database_tracks:6} tracks are not in the AccurateRip DB\n")
+        # print(f"  {inaccurate_but_secure_tracks:6} tracks are 'Inaccurate' but 'Secure' according to the drive C2 pointers")
+        # print(f"  {accurate_tracks + inaccurate_tracks:6} out of {tracks_count} tracks have AccurateRip status, of which {inaccurate_but_secure_tracks} are 'Inaccurate' but 'Secure'")
+        # print(f"  {secure_tracks:6} tracks are 'Secure' according to the drive C2 pointers")
+        # print(f"  {insecure_tracks:6} tracks are not 'Secure' according to the drive C2 pointers")
+    else:
+        print("\nSkipping summary - no tracks found")
 
 
 if __name__ == "__main__":

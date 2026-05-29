@@ -12,5 +12,10 @@ written by dBpoweramp).
 
 ## Known issues
 
-* pyAccurateRipReport bombs out if no FLAC files are found
+* None
 
+## Future improvements
+
+* Generate JSON reports for automated processing
+* Generate more specific output / reports (JSON might make this superfluous, filter JSON)
+- 
