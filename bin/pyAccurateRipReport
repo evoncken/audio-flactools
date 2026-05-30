@@ -8,9 +8,9 @@
 #     (depends on C2 pointers being enabled during ripping)
 #
 #   Quality assessment:
-#     Track with AccurateRip status "Accurate" is good, regardless of "Secure" status.
-#     Track with "Secure: Yes" status is good, even if AccurateRip status "Inaccurate" or "Not in database"
-#     Track with neither Accurate nor Secure status is unknown - need to verify by listening to rip
+#     Track with AccurateRip status "Accurate" is considered 'perfect', regardless of "Secure" status.
+#     Track with "Secure: Yes" status is 'good', even if AccurateRip status "Inaccurate" or "Not in database"
+#     Track with neither Accurate nor Secure status is 'unknown' - need to verify by listening to rip
 
 from curses import meta
 import logging
@@ -23,6 +23,25 @@ import subprocess
 import sys
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TrackMetadata:
+    album_artist: str | None
+    album: str | None
+    artist: str | None
+    date: str | None
+    disc_number: int | None
+    disc_total: int | None
+    encoded_by: str | None
+    encoder: str | None
+    genre: str | None
+    track_name: str | None
+    track_number: int | None
+    track_total: int | None
+    accuraterip: str | None
+    secure: str | None
+
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -48,36 +67,6 @@ def parse_arguments() -> argparse.Namespace:
     )
     return parser.parse_args()
 
-@dataclass
-class TrackMetadata:
-    album_artist: str | None
-    album: str | None
-    artist: str | None
-    disc_number: int | None
-    disc_total: int | None
-    track_name: str | None
-    track_number: int | None
-    track_total: int | None
-    accuraterip: str | None
-    secure: str | None
-
-# @dataclass
-# class FlacCount:
-#     total: int
-#     ok: int
-#     failed_warning: int
-#     failed: int
-#     unknown_warning: int
-#     unknown: int
-
-# @dataclass
-# class FlacReport:
-#     artists: set
-#     albums: set
-#     album_by_artist: dict
-#     albums_with_errors: dict
-#     albums_not_in_accuraterip: dict
-
 
 def walk_flac_files(root: Path) -> Iterator[Path]:
     """
@@ -101,19 +90,16 @@ def parse_vorbis_comments(text: str) -> TrackMetadata:
     Pass the VORBIS_COMMENT block text from metaflac
     and parse out the relevant metadata fields.
     """
-    meta = TrackMetadata(None, None, None, None, None, None, None, None, None, None)
+    meta = TrackMetadata(None, None, None, None, None, None, None, None, None, None, None, None, None, None)
     for line in text.splitlines():
-        logger.debug(f"Parsing line: |{line}|")
         # Remove the "comment[x]: " prefix and just get the key=value part
         if "comment[" in line:
             entry = line[line.find(": ") + 2:]
-            logger.debug(f"Found comment line: |{line}|, extracted entry: |{entry}|")
         else:
-            # ignore this line of input, it is not a comment line with key=value data
+            # skip this line, it is not a comment with key=value data
             continue
         key, _, value = entry.partition("=")
         key = key.lower()
-        logger.debug(f"Parsing key: |{key}|, value: |{value}|")
 
         if key == "albumartist":
             meta.album_artist = value
@@ -121,10 +107,18 @@ def parse_vorbis_comments(text: str) -> TrackMetadata:
             meta.artist = value
         elif key == "album":
             meta.album = value
+        elif key == "date":
+            meta.date = value
         elif key == "discnumber":
             meta.disc_number = int(value)
         elif key == "disctotal":
             meta.disc_total = int(value)
+        elif key == "encoded by":
+            meta.encoded_by = value
+        elif key == "encoder":
+            meta.encoder = value
+        elif key == "genre":
+            meta.genre = value
         elif key == "title":
             meta.track_name = value
         elif key == "tracknumber":
@@ -154,7 +148,6 @@ def parse_vorbis_comments(text: str) -> TrackMetadata:
 def test_parse_vorbis_comments(root: Path):
     for flac_file in walk_flac_files(root):
         try:
-            logger.debug(f"Running metaflac on {flac_file}")
             # Run metaflac on each file
             result = subprocess.run(
                 ["metaflac", "--list", "--block-type=VORBIS_COMMENT", str(flac_file)],
@@ -163,12 +156,11 @@ def test_parse_vorbis_comments(root: Path):
                 check=True
             )
             meta = parse_vorbis_comments(result.stdout)
-            logger.debug(meta)
         except subprocess.CalledProcessError as e:
             logger.error(f"Error processing {flac_file}: {e}")
 
 
-def short_track_status(meta: TrackMetaData) -> str:
+def short_track_status(meta: TrackMetadata) -> str:
     # Determine AR and SR status symbols for logging
     AR="?"
     if meta.accuraterip == "accurate":
@@ -297,29 +289,29 @@ def main():
     artists = process_track_metadata(root_path)
 
     # Statistics and summary report
-    artists_count = len(artists)
-    albums_count = sum(len(albums) for albums in artists.values())
-    tracks_count = sum(len(tracks) for albums in artists.values() for tracks in albums.values())
-    print(f"Processed {tracks_count} tracks on {albums_count} albums by {artists_count} artists")
+    artistcount = len(artists)
+    albumcount = sum(len(albums) for albums in artists.values())
+    trackcount = sum(len(tracks) for albums in artists.values() for tracks in albums.values())
+    print(f"Processed {trackcount} tracks on {albumcount} albums by {artistcount} artists")
 
-    accurate_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "accurate")
-    inaccurate_but_secure_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "inaccurate" and track.secure == "yes")
-    not_in_database_but_secure_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "not in database" and track.secure == "yes")
+    trackcount_accurate = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "accurate")
+    trackcount_inaccurate_secure = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "inaccurate" and track.secure == "yes")
+    trackcount_not_in_accurip = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "not in database")
+    trackcount_not_in_accurip_secure = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "not in database" and track.secure == "yes")
 
-    good_tracks = accurate_tracks + inaccurate_but_secure_tracks + not_in_database_but_secure_tracks
+    trackcount_good = trackcount_accurate + trackcount_inaccurate_secure + trackcount_not_in_accurip_secure
 
-    if tracks_count > 0:
+    if trackcount > 0:
         report_bad_albums(artists)
         print("\nSummary of AccurateRip and Secure status:")
         print("-"*40)
-        print(f"  {good_tracks:6} tracks out of {tracks_count} ({good_tracks/tracks_count*100:.1f}%) are GOOD (Accurate or Secure rip)")
-        print(f"         {accurate_tracks:6} tracks out of {tracks_count} ({accurate_tracks/tracks_count*100:.1f}%) are Accurate")
-        print(f"         {inaccurate_but_secure_tracks:6} tracks out of {tracks_count} ({inaccurate_but_secure_tracks/tracks_count*100:.1f}%) are Secure (Inaccurate)")
-        print(f"         {not_in_database_but_secure_tracks:6} tracks out of {tracks_count} ({not_in_database_but_secure_tracks/tracks_count*100:.1f}%) are Secure (Not in Database)\n")
+        print(f"  {trackcount_good:6} tracks out of {trackcount} ({trackcount_good/trackcount*100:.1f}%) are GOOD (Accurate or Secure rip)")
+        print(f"         {trackcount_accurate:6} tracks out of {trackcount} ({trackcount_accurate/trackcount*100:.1f}%) are Accurate")
+        print(f"         {trackcount_inaccurate_secure:6} tracks out of {trackcount} ({trackcount_inaccurate_secure/trackcount*100:.1f}%) are Secure (Inaccurate)")
+        print(f"         {trackcount_not_in_accurip_secure:6} tracks out of {trackcount} ({trackcount_not_in_accurip_secure/trackcount*100:.1f}%) are Secure (Not in Database)\n")
 
-        print(f"  {tracks_count - good_tracks:6} tracks out of {tracks_count} ({(tracks_count - good_tracks)/tracks_count*100:.1f}%) might be usable, please verify (Inaccurate and not Secure)\n")
+        print(f"  {trackcount - trackcount_good:6} tracks out of {trackcount} ({(trackcount - trackcount_good)/trackcount*100:.1f}%) might be usable, please verify (Inaccurate and not Secure)\n")
 
-        # not_in_database_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "not in database")
         # inaccurate_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "inaccurate")
         # secure_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.secure == "yes")
         # insecure_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.secure == "no")

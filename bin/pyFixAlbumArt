@@ -15,8 +15,9 @@ try:
 except ImportError:
     raise SystemExit("Pillow library is required. Install it with: 'pip install pillow' (generic) or 'brew install pillow' (macOS)")
 
+logger = logging.getLogger(__name__)
 
-def scan_and_filter_folder_images(start_path=".", size_threshold: int = 600 * 1024, logger: logging.Logger = None) -> Iterator[Path]:
+def scan_and_filter_folder_images(start_path=".", size_threshold: int = 600 * 1024) -> Iterator[Path]:
     """
     Scans current and subdirectories for JPEG files named "Folder.jpg"
     and yields them if their file size exceeds the threshold (default: 600 kB / 614,400 bytes).
@@ -27,9 +28,6 @@ def scan_and_filter_folder_images(start_path=".", size_threshold: int = 600 * 10
     Yields:
         File paths that match criteria
     """
-    if logger is None:
-        logger = logging.getLogger(__name__)
-    
     # Recursively scan directories
     for root, dirs, files in os.walk(start_path):
         if "Folder.jpg" in files:
@@ -43,14 +41,11 @@ def scan_and_filter_folder_images(start_path=".", size_threshold: int = 600 * 10
                 yield path_obj
 
 
-def reduce_folder_image_size(image_path: Path, size_threshold: int = 600 * 1024, reduction_factor: float = 0.99, logger: logging.Logger = None) -> Path:
+def reduce_folder_image_size(image_path: Path, size_threshold: int = 600 * 1024, reduction_factor: float = 0.99) -> Path:
     """
     Reduce the resolution of a Folder.jpg image until the file size is below the threshold.
     The original image is renamed to Folder-original.jpg and the resized image is saved back to Folder.jpg.
     """
-    if logger is None:
-        logger = logging.getLogger(__name__)
-
     if image_path.name != "Folder.jpg":
         raise ValueError("reduce_folder_image_size only supports 'Folder.jpg' images")
 
@@ -99,12 +94,11 @@ def reduce_folder_image_size(image_path: Path, size_threshold: int = 600 * 1024,
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    logger = logging.getLogger(__name__)
 
     threshold_kB=600
 
     print(f"Scanning for Folder.jpg files exceeding {threshold_kB} kB ...")
-    selected_files = list(scan_and_filter_folder_images(size_threshold=threshold_kB * 1024,logger=logger))
+    selected_files = list(scan_and_filter_folder_images(size_threshold=threshold_kB * 1024))
     print("-"*50)
 
     print(f"Total files selected: {len(selected_files)}")
@@ -115,7 +109,7 @@ if __name__ == "__main__":
         print(f"Reducing file sizes of Folder.jpg files exceeding {threshold_kB} kB...\n")
         for file in selected_files:
             try:
-                reduce_folder_image_size(file, size_threshold=threshold_kB * 1024, logger=logger)
+                reduce_folder_image_size(file, size_threshold=threshold_kB * 1024)
             except Exception as error:
                 logger.error("Failed to reduce %s: %s", file, error)
     else:
