@@ -12,18 +12,16 @@
 #     Track with "Secure: Yes" status is 'good', even if AccurateRip status "Inaccurate" or "Not in database"
 #     Track with neither Accurate nor Secure status is 'unknown' - need to verify by listening to rip
 
-from curses import meta
-import logging
-from pathlib import Path
-from dataclasses import dataclass
-from typing import Iterator
 import argparse
-import json
+import logging
+import re
 import subprocess
 import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Iterator
 
 logger = logging.getLogger(__name__)
-
 
 @dataclass
 class TrackMetadata:
@@ -48,16 +46,22 @@ def parse_arguments() -> argparse.Namespace:
         description="Report AccurateRip / Secure status for FLAC tracks"
     )
     parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Verbose output",
-    )
-    parser.add_argument(
         "-d",
         "--debug",
         action="store_true",
         help="Debugging output",
+    )
+    parser.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Quiet output",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Verbose output",
     )
     parser.add_argument(
         "root",
@@ -74,6 +78,8 @@ def walk_flac_files(root: Path) -> Iterator[Path]:
     including the root itself, in sorted order.
     """
     root = Path(root)
+    if not root.is_dir():
+        raise NotADirectoryError(f"Root is not a directory: {root}")
 
     # Yield FLACs in the root directory first
     for flac in sorted(root.glob("*.flac")):
@@ -83,6 +89,28 @@ def walk_flac_files(root: Path) -> Iterator[Path]:
     for directory in sorted(p for p in root.rglob("*") if p.is_dir()):
         for flac in sorted(directory.glob("*.flac")):
             yield flac
+
+
+def is_valid_date(date_str: str) -> bool:
+    """
+    Validate date string in YYYY-MM-DD or YYYY format.
+    Returns True if valid, False otherwise.
+    """
+    if not date_str:
+        return False
+    # Match YYYY-MM-DD or YYYY format
+    pattern = r'^\d{4}(?:-\d{2}(?:-\d{2})?)?$'
+    if not re.match(pattern, date_str):
+        return False
+    # Additional validation for YYYY-MM-DD
+    if len(date_str) == 10:
+        try:
+            year, month, day = date_str.split('-')
+            if not (1 <= int(month) <= 12 and 1 <= int(day) <= 31):
+                return False
+        except ValueError:
+            return False
+    return True
 
 
 def parse_vorbis_comments(text: str) -> TrackMetadata:
@@ -176,15 +204,14 @@ def short_track_status(meta: TrackMetadata) -> str:
 
 
 def print_track_report(flac_file: Path, meta: TrackMetadata):
-    if args.verbose:
-        # Determine track status based on AccurateRip and Secure metadata
-        short_status=short_track_status(meta)
-        if meta.accuraterip == "accurate" or meta.secure == "yes":
-            print(f"[ OK ][{short_status}] {meta.album_artist} - {meta.album} (CD {meta.disc_number}/{meta.disc_total}) - {meta.track_number:2}/{meta.track_total:2}. {meta.track_name}")
-        elif meta.accuraterip != "accurate" and meta.secure == "no":
-            print(f"[FAIL][{short_status}] {meta.album_artist} - {meta.album} (CD {meta.disc_number}/{meta.disc_total}) - {meta.track_number:2}/{meta.track_total:2}. {meta.track_name}")
-        else:
-            print(f"[UNKN][{short_status}] {meta.album_artist} - {meta.album} (CD {meta.disc_number}/{meta.disc_total}) - {meta.track_number:2}/{meta.track_total:2}. {meta.track_name}")
+    # Determine track status based on AccurateRip and Secure metadata
+    short_status=short_track_status(meta)
+    if meta.accuraterip == "accurate" or meta.secure == "yes":
+        print(f"[ OK ][{short_status}] {meta.album_artist} - {meta.album} (CD {meta.disc_number}/{meta.disc_total}) - {meta.track_number:2}/{meta.track_total:2}. {meta.track_name}")
+    elif meta.accuraterip != "accurate" and meta.secure == "no":
+        print(f"[FAIL][{short_status}] {meta.album_artist} - {meta.album} (CD {meta.disc_number}/{meta.disc_total}) - {meta.track_number:2}/{meta.track_total:2}. {meta.track_name}")
+    else:
+        print(f"[UNKN][{short_status}] {meta.album_artist} - {meta.album} (CD {meta.disc_number}/{meta.disc_total}) - {meta.track_number:2}/{meta.track_total:2}. {meta.track_name}")
 
 
 def process_track_metadata(root: Path) -> dict:
@@ -194,6 +221,9 @@ def process_track_metadata(root: Path) -> dict:
     """
     total_tracks = 0
     artists: dict = {}
+
+    if not root.is_dir():
+        raise NotADirectoryError(f"Root is not a directory: {root}")
 
     for flac_file in walk_flac_files(root):
         try:
@@ -218,7 +248,8 @@ def process_track_metadata(root: Path) -> dict:
         artists[meta.album_artist][meta.album].append(meta)
 
         logger.debug(meta)
-        print_track_report(flac_file, meta)
+        if args.verbose:
+            print_track_report(flac_file, meta)
 
         total_tracks += 1
 
@@ -251,6 +282,7 @@ def report_bad_albums(artists: dict):
     Args:
         artists: A dict of artists with nested albums and tracks metadata.
     """
+    trackcount = sum(len(tracks) for albums in artists.values() for tracks in albums.values())
     artists_with_errors = detect_bad_albums(artists)
     artists_errorcount = len(artists_with_errors.items())
     albums_errorcount = sum(len(tracks) for tracks in artists_with_errors.values())
@@ -261,38 +293,44 @@ def report_bad_albums(artists: dict):
     ansi_green = "\033[32m"
     ansi_unknown = "\033[33m"
 
-    print(f"Summary of {tracks_errorcount} tracks (on {albums_errorcount} albums by {artists_errorcount} artists) that have issues:")
-    print("-"*40)
-    for artist, albums in artists_with_errors.items():
-        print(f"{artist}")
-        for album, tracks in albums.items():
-            print(f"    {album}")
-            for track in tracks:
-                short_status=short_track_status(track)
-                # Determine track rip status based on AccurateRip and Secure metadata
-                if track.accuraterip == "accurate" or track.secure == "yes":
-                    ansi_color = ansi_green
-                    track_status = "[ OK ]"
-                elif track.accuraterip != "accurate" and track.secure == "no":
-                    ansi_color = ansi_red
-                    track_status = "[FAIL]"
-                else:
-                    ansi_color = ansi_unknown
-                    track_status = "[UNKN]"
-                # ansi_color has to be entered directly into the f-string to work, it cannot be stored in a variable and then used in the f-string
-                print(f"      {ansi_color}{track_status}[{short_status}] CD{track.disc_number:2} - {track.track_number:2}/{track.track_total:2}: {track.track_name}{ansi_reset}")
+    if trackcount > 0:
+        print(f"Summary of {tracks_errorcount} tracks (on {albums_errorcount} albums by {artists_errorcount} artists) that have issues:")
+        print("-"*40)
+        for artist, albums in artists_with_errors.items():
+            print(f"{artist}")
+            for album, tracks in albums.items():
+                print(f"    {album}")
+                for track in tracks:
+                    short_status=short_track_status(track)
+                    # Determine track rip status based on AccurateRip and Secure metadata
+                    if track.accuraterip == "accurate" or track.secure == "yes":
+                        ansi_color = ansi_green
+                        track_status = "[ OK ]"
+                    elif track.accuraterip != "accurate" and track.secure == "no":
+                        ansi_color = ansi_red
+                        track_status = "[FAIL]"
+                    else:
+                        ansi_color = ansi_unknown
+                        track_status = "[UNKN]"
+                    # ansi_color has to be entered directly into the f-string to work, it cannot be stored in a variable and then used in the f-string
+                    disc_number = track.disc_number if track.disc_number is not None else "?"
+                    print(f"      {ansi_color}{track_status}[{short_status}] CD{disc_number:>2} - {track.track_number:2}/{track.track_total:2}: {track.track_name}{ansi_reset}")
+    else:
+        logger.warning("Skipping summary - no tracks found")
 
-def main():
-    root_path = Path(".").absolute()   # Default to current directory
 
-    print("Obtaining track metadata...")
-    artists = process_track_metadata(root_path)
-
+def print_summary_report(artists: dict):
+    """
+    Print statistics and summary report of tracks.
+    
+    Args:
+        artists: A dict of artists with nested albums and tracks metadata.
+    """
     # Statistics and summary report
     artistcount = len(artists)
     albumcount = sum(len(albums) for albums in artists.values())
     trackcount = sum(len(tracks) for albums in artists.values() for tracks in albums.values())
-    print(f"Processed {trackcount} tracks on {albumcount} albums by {artistcount} artists")
+    logger.debug(f"Processed {trackcount} tracks on {albumcount} albums by {artistcount} artists\n")
 
     trackcount_accurate = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "accurate")
     trackcount_inaccurate_secure = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "inaccurate" and track.secure == "yes")
@@ -302,8 +340,7 @@ def main():
     trackcount_good = trackcount_accurate + trackcount_inaccurate_secure + trackcount_not_in_accurip_secure
 
     if trackcount > 0:
-        report_bad_albums(artists)
-        print("\nSummary of AccurateRip and Secure status:")
+        print("Summary of AccurateRip and Secure status:")
         print("-"*40)
         print(f"  {trackcount_good:6} tracks out of {trackcount} ({trackcount_good/trackcount*100:.1f}%) are GOOD (Accurate or Secure rip)")
         print(f"         {trackcount_accurate:6} tracks out of {trackcount} ({trackcount_accurate/trackcount*100:.1f}%) are Accurate")
@@ -323,14 +360,25 @@ def main():
         # print(f"  {secure_tracks:6} tracks are 'Secure' according to the drive C2 pointers")
         # print(f"  {insecure_tracks:6} tracks are not 'Secure' according to the drive C2 pointers")
     else:
-        print("\nSkipping summary - no tracks found")
+        logger.warning("Skipping summary - no tracks found")
+
+
+def main():
+    root_path = Path(args.root)
+    if not root_path.is_dir():
+        raise NotADirectoryError(f"Root is not a directory: {root_path}")
+
+    logger.info("Obtaining track metadata...")
+    artists = process_track_metadata(root_path)
+    report_bad_albums(artists)
+    print_summary_report(artists)
 
 
 if __name__ == "__main__":
     args = parse_arguments()
-    level = logging.WARNING
+    level = logging.INFO
     if args.verbose:
-        level = logging.INFO
+        level = logging.INFO    # FIXME, redundant with default
     elif args.debug:
         level = logging.DEBUG
     logging.basicConfig(level=level, format='%(levelname)s: %(message)s')

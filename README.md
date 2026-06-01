@@ -12,10 +12,12 @@ written by dBpoweramp).
 
 ## Known issues
 
-* None
+* Depends on metadata written into each FLAC file by dBpoweramp
+* Might fail spectacularly with XLD rips as XLD does not write the same metadata (fix under development).
 
 ## Future improvements
 
+* Improve support for FLAC file metadata written by XLD
 * Generate JSON reports for automated processing
 * Generate more specific output / reports (JSON might make this superfluous, filter JSON)
 - 
