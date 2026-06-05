@@ -23,6 +23,7 @@ from typing import Iterator
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class TrackMetadata:
     album_artist: str | None
@@ -288,10 +289,17 @@ def report_bad_albums(artists: dict):
     albums_errorcount = sum(len(tracks) for tracks in artists_with_errors.values())
     tracks_errorcount = sum(len(tracks) for albums in artists_with_errors.values() for tracks in albums.values())
 
-    ansi_reset = "\033[0m"
-    ansi_red = "\033[31m"
-    ansi_green = "\033[32m"
-    ansi_unknown = "\033[33m"
+    ansi_reset = ""
+    ansi_red = ""
+    ansi_green = ""
+    ansi_unknown = ""
+    if sys.stdout.isatty():
+        ansi_reset = "\033[0m"
+        ansi_red = "\033[31m"
+        ansi_green = "\033[32m"
+        ansi_unknown = "\033[33m"
+    else:
+        logger.debug(f"STDOUT is redirected, disable ANSI colors")
 
     if trackcount > 0:
         print(f"Summary of {tracks_errorcount} tracks (on {albums_errorcount} albums by {artists_errorcount} artists) that have issues:")
@@ -315,6 +323,7 @@ def report_bad_albums(artists: dict):
                     # ansi_color has to be entered directly into the f-string to work, it cannot be stored in a variable and then used in the f-string
                     disc_number = track.disc_number if track.disc_number is not None else "?"
                     print(f"      {ansi_color}{track_status}[{short_status}] CD{disc_number:>2} - {track.track_number:2}/{track.track_total:2}: {track.track_name}{ansi_reset}")
+        print("")
     else:
         logger.warning("Skipping summary - no tracks found")
 
@@ -347,7 +356,8 @@ def print_summary_report(artists: dict):
         print(f"         {trackcount_inaccurate_secure:6} tracks out of {trackcount} ({trackcount_inaccurate_secure/trackcount*100:.1f}%) are Secure (Inaccurate)")
         print(f"         {trackcount_not_in_accurip_secure:6} tracks out of {trackcount} ({trackcount_not_in_accurip_secure/trackcount*100:.1f}%) are Secure (Not in Database)\n")
 
-        print(f"  {trackcount - trackcount_good:6} tracks out of {trackcount} ({(trackcount - trackcount_good)/trackcount*100:.1f}%) might be usable, please verify (Inaccurate and not Secure)\n")
+        if trackcount - trackcount_good > 0:
+            print(f"  {trackcount - trackcount_good:6} tracks out of {trackcount} ({(trackcount - trackcount_good)/trackcount*100:.1f}%) need verification (Inaccurate and not Secure)\n")
 
         # inaccurate_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "inaccurate")
         # secure_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.secure == "yes")
