@@ -40,6 +40,7 @@ class TrackMetadata:
     track_total: int | None
     accuraterip: str | None
     secure: str | None
+    ar_confidence: int | 0
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -119,7 +120,7 @@ def parse_vorbis_comments(text: str) -> TrackMetadata:
     Pass the VORBIS_COMMENT block text from metaflac
     and parse out the relevant metadata fields.
     """
-    meta = TrackMetadata(None, None, None, None, None, None, None, None, None, None, None, None, None, None)
+    meta = TrackMetadata(None, None, None, None, None, None, None, None, None, None, None, None, None, None, 0)
     for line in text.splitlines():
         # Remove the "comment[x]: " prefix and just get the key=value part
         if "comment[" in line:
@@ -167,6 +168,11 @@ def parse_vorbis_comments(text: str) -> TrackMetadata:
                 meta.secure = "yes"
             elif "secure: no" in value.lower():
                 meta.secure = "no"
+
+            if "confidence" in value.lower():
+                confidence_match = re.search(r'\(confidence\s+(\d+)\)', value, re.IGNORECASE)
+                if confidence_match:
+                    meta.ar_confidence = int(confidence_match.group(1))
 
     if meta.accuraterip == "not in database":
         logger.debug(f"Track is not in AccurateRip database: {meta.album_artist} - {meta.album} - CD{meta.disc_number} - Track {meta.track_number}: {meta.track_name}")
@@ -263,17 +269,17 @@ def detect_bad_albums(artists: dict) -> dict:
     Analyze the artists dict to find albums with bad tracks.
     Returns a dict of albums with lists of bad tracks.
     """
-    artists_with_errors = {}
+    albums_with_errors = {}
     for artist, albums in artists.items():
         for album, tracks in albums.items():
             for track in tracks:
                 if track.accuraterip != "accurate" and track.secure != "yes":
-                    if artist not in artists_with_errors:
-                        artists_with_errors[artist] = {}
-                    if album not in artists_with_errors[artist]:
-                        artists_with_errors[artist][album] = []
-                    artists_with_errors[artist][album].append(track)
-    return artists_with_errors
+                    if artist not in albums_with_errors:
+                        albums_with_errors[artist] = {}
+                    if album not in albums_with_errors[artist]:
+                        albums_with_errors[artist][album] = []
+                    albums_with_errors[artist][album].append(track)
+    return albums_with_errors
 
 
 def report_bad_albums(artists: dict):
@@ -284,10 +290,10 @@ def report_bad_albums(artists: dict):
         artists: A dict of artists with nested albums and tracks metadata.
     """
     trackcount = sum(len(tracks) for albums in artists.values() for tracks in albums.values())
-    artists_with_errors = detect_bad_albums(artists)
-    artists_errorcount = len(artists_with_errors.items())
-    albums_errorcount = sum(len(tracks) for tracks in artists_with_errors.values())
-    tracks_errorcount = sum(len(tracks) for albums in artists_with_errors.values() for tracks in albums.values())
+    albums_with_errors = detect_bad_albums(artists)
+    errorcount_artists = len(albums_with_errors.items())
+    errorcount_albums = sum(len(tracks) for tracks in albums_with_errors.values())
+    errorcount_tracks = sum(len(tracks) for albums in albums_with_errors.values() for tracks in albums.values())
 
     ansi_reset = ""
     ansi_red = ""
@@ -302,9 +308,9 @@ def report_bad_albums(artists: dict):
         logger.debug(f"STDOUT is redirected, disable ANSI colors")
 
     if trackcount > 0:
-        print(f"Summary of {tracks_errorcount} tracks (on {albums_errorcount} albums by {artists_errorcount} artists) that have issues:")
+        print(f"Summary of {errorcount_tracks} tracks (on {errorcount_albums} albums by {errorcount_artists} artists) that have issues:")
         print("-"*40)
-        for artist, albums in artists_with_errors.items():
+        for artist, albums in albums_with_errors.items():
             print(f"{artist}")
             for album, tracks in albums.items():
                 print(f"    {album}")
