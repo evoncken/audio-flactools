@@ -30,8 +30,8 @@ class TrackMetadata:
     album: str | None
     artist: str | None
     date: str | None
-    disc_number: int | None
-    disc_total: int | None
+    disc_number: int | 1
+    disc_total: int | 1
     encoded_by: str | None
     encoder: str | None
     genre: str | None
@@ -91,28 +91,6 @@ def walk_flac_files(root: Path) -> Iterator[Path]:
     for directory in sorted(p for p in root.rglob("*") if p.is_dir()):
         for flac in sorted(directory.glob("*.flac")):
             yield flac
-
-
-def is_valid_date(date_str: str) -> bool:
-    """
-    Validate date string in YYYY-MM-DD or YYYY format.
-    Returns True if valid, False otherwise.
-    """
-    if not date_str:
-        return False
-    # Match YYYY-MM-DD or YYYY format
-    pattern = r'^\d{4}(?:-\d{2}(?:-\d{2})?)?$'
-    if not re.match(pattern, date_str):
-        return False
-    # Additional validation for YYYY-MM-DD
-    if len(date_str) == 10:
-        try:
-            year, month, day = date_str.split('-')
-            if not (1 <= int(month) <= 12 and 1 <= int(day) <= 31):
-                return False
-        except ValueError:
-            return False
-    return True
 
 
 def parse_vorbis_comments(text: str) -> TrackMetadata:
@@ -224,10 +202,10 @@ def print_track_report(flac_file: Path, meta: TrackMetadata):
 def process_track_metadata(root: Path) -> dict:
     """
     Walk FLAC files under root, extract metadata and print per-track reports.
-    Returns a nested dict artists[artist][album] -> list of (track_number, ar, sr).
+    Returns a nested dict collection[artist][album] -> list of (track_number, ar, sr).
     """
     total_tracks = 0
-    artists: dict = {}
+    collection: dict = {}
 
     if not root.is_dir():
         raise NotADirectoryError(f"Root is not a directory: {root}")
@@ -247,12 +225,12 @@ def process_track_metadata(root: Path) -> dict:
 
         meta = parse_vorbis_comments(result.stdout)
         
-        # Record all track metadata in a nested dict artists[artist][album]
-        if meta.album_artist not in artists:
-            artists[meta.album_artist]={}
-        if meta.album not in artists[meta.album_artist]:
-            artists[meta.album_artist][meta.album]=[]
-        artists[meta.album_artist][meta.album].append(meta)
+        # Record all track metadata in a nested dict: collection[artist][album]
+        if meta.album_artist not in collection:
+            collection[meta.album_artist]={}
+        if meta.album not in collection[meta.album_artist]:
+            collection[meta.album_artist][meta.album]=[]
+        collection[meta.album_artist][meta.album].append(meta)
 
         logger.debug(meta)
         if args.verbose:
@@ -260,37 +238,90 @@ def process_track_metadata(root: Path) -> dict:
 
         total_tracks += 1
 
-    logger.info(f"Processed {total_tracks} tracks from {root}")
-    return artists
+    logger.debug(f"Processed {total_tracks} tracks found under '{root}'")
+    return collection
 
 
-def detect_bad_albums(artists: dict) -> dict:
+def get_accurate_albums(collection: dict) -> dict:
     """
-    Analyze the artists dict to find albums with bad tracks.
-    Returns a dict of albums with lists of bad tracks.
+    Analyze the artists dict to find albums with all tracks Accurate.
+    Returns a 'collection' dict filtered to only contain Accurate albums.
+    """
+    accurate_collection = {}
+    for artist, albums in collection.items():
+        for album, tracks in albums.items():
+            if all(track.accuraterip == "accurate" for track in tracks):
+                if artist not in accurate_collection:
+                    accurate_collection[artist] = {}
+                accurate_collection[artist][album] = tracks
+    return accurate_collection
+
+
+def get_secure_albums(collection: dict) -> dict:
+    """
+    Analyze the artists dict to find albums with all tracks Secure.
+    Returns a 'collection' dict filtered to only contain Secure albums.
+    """
+    secure_albums = {}
+    for artist, albums in collection.items():
+        for album, tracks in albums.items():
+            if all(track.secure == "yes" for track in tracks):
+                if artist not in secure_albums:
+                    secure_albums[artist] = {}
+                secure_albums[artist][album] = tracks
+    return secure_albums
+
+
+def get_bad_tracks(collection: dict) -> dict:
+    """
+    Analyze the artists dict to find albums with any bad tracks.
+    Returns a nested dict of artists and albums with lists of bad tracks.
     """
     albums_with_errors = {}
-    for artist, albums in artists.items():
-        for album, tracks in albums.items():
-            for track in tracks:
-                if track.accuraterip != "accurate" and track.secure != "yes":
-                    if artist not in albums_with_errors:
-                        albums_with_errors[artist] = {}
-                    if album not in albums_with_errors[artist]:
-                        albums_with_errors[artist][album] = []
-                    albums_with_errors[artist][album].append(track)
+    if collection:
+        for artist, albums in collection.items():
+            for album, tracks in albums.items():
+                for track in tracks:
+                    if track.accuraterip != "accurate" and track.secure != "yes":
+                        if artist not in albums_with_errors:
+                            albums_with_errors[artist] = {}
+                        if album not in albums_with_errors[artist]:
+                            albums_with_errors[artist][album] = []
+                        albums_with_errors[artist][album].append(track)
     return albums_with_errors
 
 
-def report_bad_albums(artists: dict):
+def report_albums(collection: dict):
+    """
+    Print a report of artists and albums supplied as argument.
+    
+    Args:
+        collection: A nested dict of artists and albums with track metadata.
+    """
+    if collection:
+        print("-"*40)
+        for artist, albums in collection.items():
+            print(f"{artist}")
+            for album, tracks in albums.items():
+                tracks = albums[album]
+                if tracks[0].disc_total > 1:
+                    print(f"    {album} (CD {tracks[0].disc_number}/{tracks[0].disc_total}, {len(tracks)} tracks)")
+                else:
+                    print(f"    {album} ({len(tracks)} tracks)")
+        print("")
+    else:
+        logger.debug("No artists or albums found")
+
+
+def report_bad_albums(collection: dict):
     """
     Print a formatted report of artists and albums with inaccurate or insecure tracks.
     
     Args:
-        artists: A dict of artists with nested albums and tracks metadata.
+        collection: A nested dict of artists and albums with track metadata.
     """
-    trackcount = sum(len(tracks) for albums in artists.values() for tracks in albums.values())
-    albums_with_errors = detect_bad_albums(artists)
+    trackcount = sum(len(tracks) for albums in collection.values() for tracks in albums.values())
+    albums_with_errors = get_bad_tracks(collection)
     errorcount_artists = len(albums_with_errors.items())
     errorcount_albums = sum(len(tracks) for tracks in albums_with_errors.values())
     errorcount_tracks = sum(len(tracks) for albums in albums_with_errors.values() for tracks in albums.values())
@@ -334,28 +365,33 @@ def report_bad_albums(artists: dict):
         logger.warning("Skipping summary - no tracks found")
 
 
-def print_summary_report(artists: dict):
+def print_summary_report(collection: dict):
     """
     Print statistics and summary report of tracks.
     
     Args:
-        artists: A dict of artists with nested albums and tracks metadata.
+        collection: A dict of artists with nested albums and tracks metadata.
     """
     # Statistics and summary report
-    artistcount = len(artists)
-    albumcount = sum(len(albums) for albums in artists.values())
-    trackcount = sum(len(tracks) for albums in artists.values() for tracks in albums.values())
+    artistcount = len(collection)
+    albumcount = sum(len(albums) for albums in collection.values())
+    trackcount = sum(len(tracks) for albums in collection.values() for tracks in albums.values())
     logger.debug(f"Processed {trackcount} tracks on {albumcount} albums by {artistcount} artists\n")
 
-    trackcount_accurate = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "accurate")
-    trackcount_inaccurate_secure = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "inaccurate" and track.secure == "yes")
-    trackcount_not_in_accurip = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "not in database")
-    trackcount_not_in_accurip_secure = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "not in database" and track.secure == "yes")
+    trackcount_accurate = sum(1 for albums in collection.values() for tracks in albums.values() for track in tracks if track.accuraterip == "accurate")
+    trackcount_inaccurate_secure = sum(1 for albums in collection.values() for tracks in albums.values() for track in tracks if track.accuraterip == "inaccurate" and track.secure == "yes")
+    trackcount_not_in_accurip = sum(1 for albums in collection.values() for tracks in albums.values() for track in tracks if track.accuraterip == "not in database")
+    trackcount_not_in_accurip_secure = sum(1 for albums in collection.values() for tracks in albums.values() for track in tracks if track.accuraterip == "not in database" and track.secure == "yes")
 
     trackcount_good = trackcount_accurate + trackcount_inaccurate_secure + trackcount_not_in_accurip_secure
 
     if trackcount > 0:
-        print("Summary of AccurateRip and Secure status:")
+        print("Processing summary:")
+        print("-"*40)
+        print(f"  {artistcount:6} artists")
+        print(f"  {albumcount:6} albums")
+        print(f"  {trackcount:6} tracks\n")
+        print("AccurateRip and Secure status summary:")
         print("-"*40)
         print(f"  {trackcount_good:6} tracks out of {trackcount} ({trackcount_good/trackcount*100:.1f}%) are GOOD (Accurate or Secure rip)")
         print(f"         {trackcount_accurate:6} tracks out of {trackcount} ({trackcount_accurate/trackcount*100:.1f}%) are Accurate")
@@ -364,17 +400,6 @@ def print_summary_report(artists: dict):
 
         if trackcount - trackcount_good > 0:
             print(f"  {trackcount - trackcount_good:6} tracks out of {trackcount} ({(trackcount - trackcount_good)/trackcount*100:.1f}%) need verification (Inaccurate and not Secure)\n")
-
-        # inaccurate_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.accuraterip == "inaccurate")
-        # secure_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.secure == "yes")
-        # insecure_tracks = sum(1 for albums in artists.values() for tracks in albums.values() for track in tracks if track.secure == "no")
-        # print(f"  {accurate_tracks:6} tracks are 'Accurate' according to AccurateRip DB")
-        # print(f"  {inaccurate_tracks:6} tracks are 'Inaccurate' according to AccurateRip DB")
-        # print(f"  {not_in_database_tracks:6} tracks are not in the AccurateRip DB\n")
-        # print(f"  {inaccurate_but_secure_tracks:6} tracks are 'Inaccurate' but 'Secure' according to the drive C2 pointers")
-        # print(f"  {accurate_tracks + inaccurate_tracks:6} out of {tracks_count} tracks have AccurateRip status, of which {inaccurate_but_secure_tracks} are 'Inaccurate' but 'Secure'")
-        # print(f"  {secure_tracks:6} tracks are 'Secure' according to the drive C2 pointers")
-        # print(f"  {insecure_tracks:6} tracks are not 'Secure' according to the drive C2 pointers")
     else:
         logger.warning("Skipping summary - no tracks found")
 
@@ -384,10 +409,15 @@ def main():
     if not root_path.is_dir():
         raise NotADirectoryError(f"Root is not a directory: {root_path}")
 
-    logger.info("Obtaining track metadata...")
-    artists = process_track_metadata(root_path)
-    report_bad_albums(artists)
-    print_summary_report(artists)
+    logger.debug("Obtaining track metadata...")
+    disc_collection = process_track_metadata(root_path)
+    print_summary_report(disc_collection)
+
+    accurate_collection = get_accurate_albums(disc_collection)
+    report_albums(accurate_collection)
+
+    # secure_albums = get_secure_albums(disc_collection)
+    # report_bad_albums(disc_collection)
 
 
 if __name__ == "__main__":
