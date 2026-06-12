@@ -299,7 +299,6 @@ def report_albums(collection: dict):
         collection: A nested dict of artists and albums with track metadata.
     """
     if collection:
-        print("-"*40)
         for artist, albums in collection.items():
             print(f"{artist}")
             for album, tracks in albums.items():
@@ -308,7 +307,7 @@ def report_albums(collection: dict):
                     print(f"    {album} (CD {tracks[0].disc_number}/{tracks[0].disc_total}, {len(tracks)} tracks)")
                 else:
                     print(f"    {album} ({len(tracks)} tracks)")
-        print("")
+            print("")
     else:
         logger.debug("No artists or albums found")
 
@@ -411,13 +410,21 @@ def main():
 
     logger.debug("Obtaining track metadata...")
     disc_collection = process_track_metadata(root_path)
+    total_artist_count = len(disc_collection)
+    total_album_count = sum(len(albums) for albums in disc_collection.values())
     print_summary_report(disc_collection)
 
     accurate_collection = get_accurate_albums(disc_collection)
+    accurate_album_count = sum(len(albums) for albums in accurate_collection.values())
+    print(f"Accurate Albums ({accurate_album_count} out of {total_album_count}):")
+    print("-"*40)
     report_albums(accurate_collection)
 
-    # secure_albums = get_secure_albums(disc_collection)
-    # report_bad_albums(disc_collection)
+    secure_collection = get_secure_albums(disc_collection)
+    secure_album_count = sum(len(albums) for albums in secure_collection.values())
+    print(f"Secure Albums ({secure_album_count} out of {total_album_count}):")
+    print("-"*40)
+    report_bad_albums(secure_collection)
 
 
 if __name__ == "__main__":
