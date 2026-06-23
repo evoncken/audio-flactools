@@ -260,11 +260,11 @@ def process_track_metadata(root: Path) -> dict:
     collection: dict = {}
 
     if not root.is_dir():
-        raise NotADirectoryError(f"Root is not a directory: {root}")
+        raise NotADirectoryError(f"process_track_metadata: '{root}' is not a directory")
 
     for flac_file in walk_flac_files(root):
         try:
-            logger.debug(f"Running metaflac on {flac_file}")
+            logger.debug(f"process_track_metadata: Running metaflac on {flac_file}")
             result = subprocess.run(
                 ["metaflac", "--list", "--block-type=VORBIS_COMMENT", str(flac_file)],
                 capture_output=True,
@@ -272,7 +272,7 @@ def process_track_metadata(root: Path) -> dict:
                 check=True,
             )
         except subprocess.CalledProcessError as e:
-            logger.error(f"Error running metaflac on {flac_file}: {e}")
+            logger.error(f"process_track_metadata: Error running metaflac on {flac_file}: {e}")
             continue
 
         meta = parse_vorbis_comments(result.stdout)
@@ -455,7 +455,7 @@ def print_track_summary(collection: dict):
     artistcount = len(collection)
     disccount = sum(len(discs) for discs in collection.values())
     trackcount = sum(len(tracks) for discs in collection.values() for tracks in discs.values())
-    logger.debug(f"Processed {trackcount} tracks on {disccount} discs by {artistcount} artists\n")
+    logger.debug(f"print_track_summary: Processed {trackcount} tracks on {disccount} discs by {artistcount} artists\n")
 
     trackcount_accurate = sum(1 for discs in collection.values() for tracks in discs.values() for track in tracks if track.accuraterip == "accurate")
     trackcount_inaccurate_secure = sum(1 for discs in collection.values() for tracks in discs.values() for track in tracks if track.accuraterip == "inaccurate" and track.secure == "yes")
@@ -465,8 +465,7 @@ def print_track_summary(collection: dict):
     trackcount_good = trackcount_accurate + trackcount_inaccurate_secure + trackcount_not_in_accurip_secure
 
     if trackcount > 0:
-        logger.debug("print_summary_report: Generating track summary")
-        print(f"Processing summary: {disccount} disc(s) by {artistcount} artist(s), totaling {trackcount} track(s)\n")
+        logger.debug(f"print_track_summary: {disccount} disc(s) by {artistcount} artist(s), totaling {trackcount} track(s)\n")
         print("Track status summary:")
         print("-"*40)
         print(f"  {trackcount_good:6} tracks out of {trackcount} ({trackcount_good/trackcount*100:.1f}%) are GOOD (AR:Accurate or Secure rip):")
@@ -476,7 +475,7 @@ def print_track_summary(collection: dict):
         if trackcount - trackcount_good > 0:
             print(f"  {trackcount - trackcount_good:6} tracks out of {trackcount} ({(trackcount - trackcount_good)/trackcount*100:.1f}%) need verification (AR:Inaccurate and not Secure)\n")
     else:
-        logger.warning("Skipping summary - no tracks found")
+        logger.warning("print_track_summary: Skipping summary - no tracks found")
 
 
 def print_disc_summary(collection: dict):
@@ -499,16 +498,17 @@ def print_disc_summary(collection: dict):
     disccount_unknown = sum(len(discs) for discs in unknown_collection.values())
 
     if disccount > 0:
-        logger.debug("print_summary_report: Generating disc summary")
+        logger.debug("print_disc_summary: Generating disc summary")
         print(f"Processing summary: {disccount} disc(s) by {artistcount} artist(s)\n")
         print("Disc status summary:")
         print("-"*40)
         print(f"  {disccount_accurate:6} discs out of {disccount} ({disccount_good/disccount*100:.1f}%) are GOOD (AR:Accurate or Secure rip):")
         print(f"         {disccount_accurate:6} discs out of {disccount} ({disccount_accurate/disccount*100:.1f}%) are AR:Accurate")
         print(f"         {disccount_secure:6} discs out of {disccount} ({disccount_secure/disccount*100:.1f}%) are Secure")
-        print(f"         {disccount_unknown:6} discs out of {disccount} ({disccount_unknown/disccount*100:.1f}%) are BAD (not AR:Accurate and not Secure")
+        print()
+        print(f"         {disccount_unknown:6} discs out of {disccount} ({disccount_unknown/disccount*100:.1f}%) are BAD (not AR:Accurate and not Secure)")
     else:
-        logger.warning("Skipping summary - no discs found")
+        logger.warning("print_disc_summary: Skipping summary - no discs found")
 
 
 def main():
@@ -516,7 +516,7 @@ def main():
     if not root_path.is_dir():
         raise NotADirectoryError(f"Root is not a directory: {root_path}")
 
-    logger.debug("Obtaining track metadata...")
+    print(f"Reading track metadata for all FLAC files under '{root_path}' ...")
     disc_collection = process_track_metadata(root_path)
     disc_count = sum(len(discs) for discs in disc_collection.values())
 
