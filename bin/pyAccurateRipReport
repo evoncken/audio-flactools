@@ -71,7 +71,7 @@ class TrackMetadata:
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Report AccurateRip / Secure status for FLAC tracks"
+        description="Report AccurateRip / Secure status for FLAC tracks, discs and albums"
     )
     parser.add_argument(
         "-d",
@@ -83,37 +83,43 @@ def parse_arguments() -> argparse.Namespace:
         "-a",
         "--report-accurate",
         action="store_true",
-        help="Show fully accurate albums in collection",
+        help="Show fully ACCURATE discs",
     )
     parser.add_argument(
         "-b",
         "--report-bad",
         action="store_true",
-        help="Show albums with bad tracks",
+        help="Show discs with BAD tracks",
     )
     parser.add_argument(
         "-f",
         "--report-full",
         action="store_true",
-        help="Show all albums in collection",
+        help="Show FULL disc collection",
     )
     parser.add_argument(
         "-g",
         "--report-good",
         action="store_true",
-        help="Show good albums (fully Accurate or Secure) in collection",
+        help="Show GOOD discs",
     )
     parser.add_argument(
         "-s",
         "--report-secure",
         action="store_true",
-        help="Show secure tracks in collection",
+        help="Show SECURE discs",
     )
     parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
         help="Verbose output",
+    )
+    parser.add_argument(
+        "-w",
+        "--report-warning",
+        action="store_true",
+        help="Show discs with WARNINGS",
     )
     parser.add_argument(
         "root",
@@ -420,7 +426,7 @@ def get_unknown_discs(collection: dict) -> dict:
     return filtered_collection
 
 
-def report_albums(collection: dict):
+def print_report(collection: dict):
     """
     Print a report of artists and albums supplied as argument.
     
@@ -474,65 +480,6 @@ def report_albums(collection: dict):
             print("")
     else:
         logger.debug("report_albums: No artists or albums in collection")
-
-
-def report_bad_discs(collection: dict):
-    """
-    Print a formatted report of artists and albums with inaccurate or insecure tracks.
-    
-    Args:
-        collection: A nested dict of artists and albums with track metadata.
-    """
-    logger.debug("report_bad_albums: Generating report of albums with bad tracks")
-    trackcount = sum(len(tracks) for albums in collection.values() for tracks in albums.values())
-    albums_with_errors = get_unknown_discs(collection)
-    errorcount_artists = len(albums_with_errors.items())
-    errorcount_albums = sum(len(tracks) for tracks in albums_with_errors.values())
-    errorcount_tracks = sum(len(tracks) for albums in albums_with_errors.values() for tracks in albums.values())
-
-    ansi_reset = ""
-    ansi_red = ""
-    ansi_green = ""
-    ansi_unknown = ""
-    if sys.stdout.isatty():
-        ansi_reset = "\033[0m"
-        ansi_red = "\033[91m"
-        ansi_yellow = "\033[93m"
-        ansi_green = "\033[92m"
-        ansi_unknown = "\033[95m"
-
-    else:
-        logger.debug(f"report_bad_albums: STDOUT is redirected, disable ANSI colors")
-
-    if trackcount > 0:
-        if args.verbose:
-            print(f"{errorcount_tracks} tracks (on {errorcount_albums} albums by {errorcount_artists} artists) have issues:")
-        for artist, albums in albums_with_errors.items():
-            print(f"{artist}")
-            for album, tracks in albums.items():
-                print(f"    {album}")
-                if args.verbose:
-                    for track in tracks:
-                        short_status=short_track_status(track)
-                        # Determine track rip status based on AccurateRip and Secure metadata
-                        if track.accuraterip == "accurate" or track.secure == "yes":
-                            ansi_color = ansi_green
-                            track_status = "[ OK ]"
-                        elif track.accuraterip != "accurate" and track.secure == "warn":
-                            ansi_color = ansi_yellow
-                            track_status = "[WARN]"
-                        elif track.accuraterip != "accurate" and track.secure == "no":
-                            ansi_color = ansi_red
-                            track_status = "[FAIL]"
-                        else:
-                            ansi_color = ansi_unknown
-                            track_status = "[UNKN]"
-                        # ansi_color has to be entered directly into the f-string to work, it cannot be stored in a variable and then used in the f-string
-                        disc_number = track.disc_number if track.disc_number is not None else "?"
-                        print(f"      {ansi_color}{track_status}[{short_status}] CD{disc_number:>2} - {track.track_number:2}/{track.track_total:2}: {track.track_name}{ansi_reset}")
-        print("")
-    else:
-        logger.warning("report_bad_albums: Skipping summary - no tracks found")
 
 
 def print_track_summary(collection: dict):
@@ -625,24 +572,32 @@ def main():
     if args.report_full:
         print(f"All {disc_count} albums by {artist_count} artists in collection:")
         print("-"*40)
-        report_albums(disc_collection)
+        print_report(disc_collection)
 
     if args.report_good:
         # All tracks AR:Accurate or Secure
-        good_collection = get_accurate_or_secure_discs(disc_collection)
+        good_collection = get_good_discs(disc_collection)
         good_artist_count = len(good_collection)
         good_disc_count = sum(len(discs) for discs in good_collection.values())
         print(f"Good discs with all tracks Secure or Accurate ({good_disc_count} out of {disc_count}, {good_artist_count} artists):")
         print("-"*40)
-        report_albums(good_collection)
+        print_report(good_collection)
 
     if args.report_bad:
-        bad_collection = get_unknown_discs(disc_collection)
+        bad_collection = get_bad_discs(disc_collection)
         bad_artist_count = len(bad_collection)
         bad_disc_count = sum(len(discs) for discs in bad_collection.values())
         print(f"Discs with one or more bad tracks ({bad_disc_count} out of {disc_count}):")
         print("-"*40)
-        report_bad_discs(bad_collection)
+        print_report(bad_collection)
+
+    if args.report_warning:
+        warning_collection = get_warning_discs(disc_collection)
+        warning_artist_count = len(warning_collection)
+        warning_disc_count = sum(len(discs) for discs in warning_collection.values())
+        print(f"Discs with one or more warnings in tracks ({warning_disc_count} out of {disc_count}):")
+        print("-"*40)
+        print_report(warning_collection)
 
     if args.report_accurate:
         # All tracks AR:Accurate - this is more strict than 'report_good', basically 'perfect'
@@ -651,7 +606,7 @@ def main():
         accurate_disc_count = sum(len(discs) for discs in accurate_collection.values())
         print(f"Discs with all tracks Accurate ({accurate_disc_count} out of {disc_count}, {accurate_artist_count} artists):")
         print("-"*40)
-        report_albums(accurate_collection)
+        print_report(accurate_collection)
 
     if args.report_secure:
         # This probably only applies to successfully ripped discs discs that are not in AccurateRip database
@@ -660,7 +615,7 @@ def main():
         secure_disc_count = sum(len(discs) for discs in secure_collection.values())
         print(f"Discs with all tracks Secure ({secure_disc_count} out of {disc_count}, {secure_artist_count} artists):")
         print("-"*40)
-        report_albums(secure_collection)
+        print_report(secure_collection)
 
 
 if __name__ == "__main__":
