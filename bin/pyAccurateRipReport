@@ -436,6 +436,7 @@ def print_report(collection: dict):
 
     ansi_reset = ""
     ansi_red = ""
+    ansi_yellow = ""
     ansi_green = ""
     ansi_unknown = ""
     if sys.stdout.isatty():
