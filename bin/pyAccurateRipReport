@@ -574,31 +574,6 @@ def main():
         print("-"*40)
         print_report(disc_collection)
 
-    if args.report_good:
-        # All tracks AR:Accurate or Secure
-        good_collection = get_good_discs(disc_collection)
-        good_artist_count = len(good_collection)
-        good_disc_count = sum(len(discs) for discs in good_collection.values())
-        print(f"Good discs with all tracks Secure or Accurate ({good_disc_count} out of {disc_count}, {good_artist_count} artists):")
-        print("-"*40)
-        print_report(good_collection)
-
-    if args.report_bad:
-        bad_collection = get_bad_discs(disc_collection)
-        bad_artist_count = len(bad_collection)
-        bad_disc_count = sum(len(discs) for discs in bad_collection.values())
-        print(f"Discs with one or more bad tracks ({bad_disc_count} out of {disc_count}):")
-        print("-"*40)
-        print_report(bad_collection)
-
-    if args.report_warning:
-        warning_collection = get_warning_discs(disc_collection)
-        warning_artist_count = len(warning_collection)
-        warning_disc_count = sum(len(discs) for discs in warning_collection.values())
-        print(f"Discs with one or more warnings in tracks ({warning_disc_count} out of {disc_count}):")
-        print("-"*40)
-        print_report(warning_collection)
-
     if args.report_accurate:
         # All tracks AR:Accurate - this is more strict than 'report_good', basically 'perfect'
         accurate_collection = get_accurate_discs(disc_collection)
@@ -616,6 +591,31 @@ def main():
         print(f"Discs with all tracks Secure ({secure_disc_count} out of {disc_count}, {secure_artist_count} artists):")
         print("-"*40)
         print_report(secure_collection)
+
+    if args.report_good:
+        # All tracks AR:Accurate or Secure
+        good_collection = get_good_discs(disc_collection)
+        good_artist_count = len(good_collection)
+        good_disc_count = sum(len(discs) for discs in good_collection.values())
+        print(f"Good discs with all tracks Secure or Accurate ({good_disc_count} out of {disc_count}, {good_artist_count} artists):")
+        print("-"*40)
+        print_report(good_collection)
+
+    if args.report_warning:
+        warning_collection = get_warning_discs(disc_collection)
+        warning_artist_count = len(warning_collection)
+        warning_disc_count = sum(len(discs) for discs in warning_collection.values())
+        print(f"Discs with one or more warnings in tracks ({warning_disc_count} out of {disc_count}):")
+        print("-"*40)
+        print_report(warning_collection)
+
+    if args.report_bad:
+        bad_collection = get_bad_discs(disc_collection)
+        bad_artist_count = len(bad_collection)
+        bad_disc_count = sum(len(discs) for discs in bad_collection.values())
+        print(f"Discs with one or more bad tracks ({bad_disc_count} out of {disc_count}):")
+        print("-"*40)
+        print_report(bad_collection)
 
 
 if __name__ == "__main__":
