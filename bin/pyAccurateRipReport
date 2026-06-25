@@ -110,6 +110,12 @@ def parse_arguments() -> argparse.Namespace:
         help="Show SECURE discs",
     )
     parser.add_argument(
+        "-u",
+        "--report-unknown",
+        action="store_true",
+        help="Show discs with UNKNOWN tracks",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -354,7 +360,7 @@ def get_bad_discs(collection: dict) -> dict:
     if collection:
         for artist, discs in collection.items():
             for disc, tracks in discs.items():
-                if any((track.accuraterip != "accurate" and track.secure == "no") for track in tracks):
+                if any((track.secure == "no" and track.accuraterip != "accurate") for track in tracks):
                     if artist not in filtered_collection:
                         filtered_collection[artist] = {}
                     filtered_collection[artist][disc] = tracks
@@ -415,7 +421,7 @@ def get_unknown_discs(collection: dict) -> dict:
         for artist, discs in collection.items():
             for disc, tracks in discs.items():
                 for track in tracks:
-                    if track.accuraterip != "accurate" and track.secure != "yes" and track.secure != "warn":
+                    if track.accuraterip != "accurate" and track.secure not in ["yes","warn","no"]:
                         if artist not in filtered_collection:
                             filtered_collection[artist] = {}
                         filtered_collection[artist][disc] = tracks
@@ -455,6 +461,7 @@ def print_report(collection: dict):
                 count_good = 0
                 count_warning = 0
                 count_bad = 0
+                count_unknown = 0
                 for track in tracks:
                     if track.accuraterip == "accurate" or track.secure == "yes":
                         count_good += 1
@@ -462,9 +469,11 @@ def print_report(collection: dict):
                         count_warning += 1
                     elif track.accuraterip != "accurate" and track.secure == "no":
                         count_bad += 1
+                    elif track.accuraterip != "accurate" and track.secure not in ["yes","warn","no"]:
+                        count_unknown += 1
 
                 if args.verbose:
-                    print(f"    {album}")
+                    print(f"    {album}    ({len(tracks)} tracks: {count_good} good, {count_warning} warning, {count_bad} bad, {count_unknown} unknown)")
                     for track in tracks:
                         short_status=short_track_status(track)
                         # Determine track rip status based on AccurateRip and Secure metadata
@@ -485,11 +494,11 @@ def print_report(collection: dict):
                         print(f"      {ansi_color}{track_status}[{short_status}] CD{disc_number:>2} - {track.track_number:2}/{track.track_total:2}: {track.track_name}{ansi_reset}")
                 else:
                     if tracks[0].disc_total == 1:
-                        print(f"    {album} ({tracks[0].disc_total} CD, {len(tracks)} tracks: {count_good} good, {count_warning} warning, {count_bad} bad)")
+                        print(f"    {album}    ({tracks[0].disc_total} CD, {len(tracks)} tracks: {count_good} good, {count_warning} warning, {count_bad} bad, {count_unknown} unknown)")
                     elif tracks[0].disc_total > 1:
-                        print(f"    {album} ({tracks[0].disc_total} CDs, {len(tracks)} tracks: {count_good} good, {count_warning} warning, {count_bad} bad)")
+                        print(f"    {album}    ({tracks[0].disc_total} CDs, {len(tracks)} tracks: {count_good} good, {count_warning} warning, {count_bad} bad, {count_unknown} unknown)")
                     else:
-                        print(f"    {album} (? CDs, {len(tracks)} tracks: {count_good} good, {count_warning} warning, {count_bad} bad)")
+                        print(f"    {album}    (? CDs, {len(tracks)} tracks: {count_good} good, {count_warning} warning, {count_bad} bad, {count_unknown} unknown)")
             print("")
     else:
         logger.debug("report_albums: No artists or albums in collection")
@@ -618,7 +627,7 @@ def main():
         warning_collection = get_warning_discs(disc_collection)
         warning_artist_count = len(warning_collection)
         warning_disc_count = sum(len(discs) for discs in warning_collection.values())
-        print(f"Discs with one or more warnings in tracks ({warning_disc_count} out of {disc_count}):")
+        print(f"Discs with one or more warnings in tracks ({warning_disc_count} out of {disc_count}, {warning_artist_count} artists):")
         print("-"*40)
         print_report(warning_collection)
 
@@ -626,9 +635,17 @@ def main():
         bad_collection = get_bad_discs(disc_collection)
         bad_artist_count = len(bad_collection)
         bad_disc_count = sum(len(discs) for discs in bad_collection.values())
-        print(f"Discs with one or more bad tracks ({bad_disc_count} out of {disc_count}):")
+        print(f"Discs with one or more bad tracks ({bad_disc_count} out of {disc_count}, {bad_artist_count} artists):")
         print("-"*40)
         print_report(bad_collection)
+
+    if args.report_unknown:
+        unknown_collection = get_unknown_discs(disc_collection)
+        unknown_artist_count = len(unknown_collection)
+        unknown_disc_count = sum(len(discs) for discs in unknown_collection.values())
+        print(f"Discs with one or more unknown tracks ({unknown_disc_count} out of {disc_count}, {unknown_artist_count} artists):")
+        print("-"*40)
+        print_report(unknown_collection)
 
 
 if __name__ == "__main__":
