@@ -451,6 +451,18 @@ def print_report(collection: dict):
             print(f"{artist}")
             for album, tracks in sorted(albums.items()):
                 tracks = albums[album]
+                # Count Good/Warning/Bad tracks
+                count_good = 0
+                count_warning = 0
+                count_bad = 0
+                for track in tracks:
+                    if track.accuraterip == "accurate" or track.secure == "yes":
+                        count_good += 1
+                    elif track.accuraterip != "accurate" and track.secure == "warn":
+                        count_warning += 1
+                    elif track.accuraterip != "accurate" and track.secure == "no":
+                        count_bad += 1
+
                 if args.verbose:
                     print(f"    {album}")
                     for track in tracks:
@@ -473,11 +485,11 @@ def print_report(collection: dict):
                         print(f"      {ansi_color}{track_status}[{short_status}] CD{disc_number:>2} - {track.track_number:2}/{track.track_total:2}: {track.track_name}{ansi_reset}")
                 else:
                     if tracks[0].disc_total == 1:
-                        print(f"    {album} ({tracks[0].disc_total} CD, {len(tracks)} tracks)")
+                        print(f"    {album} ({tracks[0].disc_total} CD, {len(tracks)} tracks: {count_good} good, {count_warning} warning, {count_bad} bad)")
                     elif tracks[0].disc_total > 1:
-                        print(f"    {album} ({tracks[0].disc_total} CDs, {len(tracks)} tracks)")
+                        print(f"    {album} ({tracks[0].disc_total} CDs, {len(tracks)} tracks: {count_good} good, {count_warning} warning, {count_bad} bad)")
                     else:
-                        print(f"    {album} (? CDs, {len(tracks)} tracks)")
+                        print(f"    {album} (? CDs, {len(tracks)} tracks: {count_good} good, {count_warning} warning, {count_bad} bad)")
             print("")
     else:
         logger.debug("report_albums: No artists or albums in collection")
@@ -550,9 +562,9 @@ def print_disc_summary(collection: dict):
         print(f"         {disccount_accurate:6} discs out of {disccount} ({disccount_accurate/disccount*100:.1f}%) are PERFECT (AR:'accurate')")
         print(f"         {disccount_secure:6} discs out of {disccount} ({disccount_secure/disccount*100:.1f}%) are OK (Secure:'yes')")
         print()
-        print(f"         {disccount_warning:6} discs out of {disccount} ({disccount_warning/disccount*100:.1f}%) have Warnings (corrected read errors)")
-        print(f"         {disccount_bad:6} discs out of {disccount} ({disccount_bad/disccount*100:.1f}%) are Bad (uncorrected read errors)")
-        print(f"         {disccount_unknown:6} discs out of {disccount} ({disccount_unknown/disccount*100:.1f}%) are Unknown (not AR:Accurate and not Secure)\n")
+        print(f"         {disccount_warning:6} discs out of {disccount} ({disccount_warning/disccount*100:.1f}%) have tracks with Warnings (corrected read errors)")
+        print(f"         {disccount_bad:6} discs out of {disccount} ({disccount_bad/disccount*100:.1f}%) are have Bad tracks (uncorrected read errors)")
+        print(f"         {disccount_unknown:6} discs out of {disccount} ({disccount_unknown/disccount*100:.1f}%) are have Unknown tracks (not AR:Accurate and not Secure)\n")
     else:
         logger.warning("print_disc_summary: Skipping summary - no discs found")
 
