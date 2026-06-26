@@ -487,6 +487,11 @@ def print_report(collection: dict):
                     else:
                         print(f"    {album}    (? CDs, {len(tracks)} tracks: {count_good} good, {count_warning} warning, {count_bad} bad, {count_unknown} unknown)")
             print("")
+        if args.verbose:
+            print("-"*40)
+            print("Track status explanation: [OK|WARN|FAIL][12]")
+            print("      1 = AccurateRip: 'A'ccurate, 'I'naccurate, 'N'ot in database, or '?' if unknown")
+            print("      2 = SecureRip: 'S'ecure, 'N'ot secure (uncorrected errors), 'W'arning (corrected errors), or '?' if unknown")
     else:
         logger.debug("report_albums: No artists or albums in collection")
 
