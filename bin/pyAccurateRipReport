@@ -260,19 +260,6 @@ def short_track_status(meta: TrackMetadata) -> str:
     return AR+SR
 
 
-# def print_track_report(flac_file: Path, meta: TrackMetadata):
-#     """
-#     Print a report for a single track based on its metadata.
-#     """
-#     short_status=short_track_status(meta)
-#     if meta.accuraterip == "accurate" or meta.secure == "yes":
-#         print(f"[ OK ][{short_status}] {meta.album_artist} - {meta.album} (CD {meta.disc_number}/{meta.disc_total}) - {meta.track_number:2}/{meta.track_total:2}. {meta.track_name}")
-#     elif meta.accuraterip != "accurate" and meta.secure == "no":
-#         print(f"[FAIL][{short_status}] {meta.album_artist} - {meta.album} (CD {meta.disc_number}/{meta.disc_total}) - {meta.track_number:2}/{meta.track_total:2}. {meta.track_name}")
-#     else:
-#         print(f"[UNKN][{short_status}] {meta.album_artist} - {meta.album} (CD {meta.disc_number}/{meta.disc_total}) - {meta.track_number:2}/{meta.track_total:2}. {meta.track_name}")
-
-
 def process_track_metadata(root: Path) -> dict:
     """
     Walk FLAC files under root, extract metadata and print per-track reports.
@@ -592,7 +579,7 @@ def main():
     print_track_summary(disc_collection)
 
     if args.report_full:
-        print(f"All {disc_count} albums by {artist_count} artists in collection:")
+        print(f"All {disc_count} discs by {artist_count} artists in collection:")
         print("-"*40)
         print_report(disc_collection)
 
@@ -601,7 +588,7 @@ def main():
         accurate_collection = get_accurate_discs(disc_collection)
         accurate_artist_count = len(accurate_collection)
         accurate_disc_count = sum(len(discs) for discs in accurate_collection.values())
-        print(f"Discs with all tracks Accurate ({accurate_disc_count} out of {disc_count}, {accurate_artist_count} artists):")
+        print(f"Discs with all tracks Accurate ({accurate_disc_count} out of {disc_count} discs, {accurate_artist_count} artists):")
         print("-"*40)
         print_report(accurate_collection)
 
@@ -610,7 +597,7 @@ def main():
         secure_collection = get_secure_discs(disc_collection)
         secure_artist_count = len(secure_collection)
         secure_disc_count = sum(len(discs) for discs in secure_collection.values())
-        print(f"Discs with all tracks Secure ({secure_disc_count} out of {disc_count}, {secure_artist_count} artists):")
+        print(f"Discs with all tracks Secure ({secure_disc_count} out of {disc_count} discs, {secure_artist_count} artists):")
         print("-"*40)
         print_report(secure_collection)
 
@@ -619,7 +606,7 @@ def main():
         good_collection = get_good_discs(disc_collection)
         good_artist_count = len(good_collection)
         good_disc_count = sum(len(discs) for discs in good_collection.values())
-        print(f"Good discs with all tracks Secure or Accurate ({good_disc_count} out of {disc_count}, {good_artist_count} artists):")
+        print(f"Good discs with all tracks Secure or Accurate ({good_disc_count} out of {disc_count} discs, {good_artist_count} artists):")
         print("-"*40)
         print_report(good_collection)
 
@@ -627,7 +614,7 @@ def main():
         warning_collection = get_warning_discs(disc_collection)
         warning_artist_count = len(warning_collection)
         warning_disc_count = sum(len(discs) for discs in warning_collection.values())
-        print(f"Discs with one or more warnings in tracks ({warning_disc_count} out of {disc_count}, {warning_artist_count} artists):")
+        print(f"Discs with one or more warnings in tracks ({warning_disc_count} out of {disc_count} discs, {warning_artist_count} artists):")
         print("-"*40)
         print_report(warning_collection)
 
@@ -635,7 +622,7 @@ def main():
         bad_collection = get_bad_discs(disc_collection)
         bad_artist_count = len(bad_collection)
         bad_disc_count = sum(len(discs) for discs in bad_collection.values())
-        print(f"Discs with one or more bad tracks ({bad_disc_count} out of {disc_count}, {bad_artist_count} artists):")
+        print(f"Discs with one or more bad tracks ({bad_disc_count} out of {disc_count} discs, {bad_artist_count} artists):")
         print("-"*40)
         print_report(bad_collection)
 
@@ -643,7 +630,7 @@ def main():
         unknown_collection = get_unknown_discs(disc_collection)
         unknown_artist_count = len(unknown_collection)
         unknown_disc_count = sum(len(discs) for discs in unknown_collection.values())
-        print(f"Discs with one or more unknown tracks ({unknown_disc_count} out of {disc_count}, {unknown_artist_count} artists):")
+        print(f"Discs with one or more unknown tracks ({unknown_disc_count} out of {disc_count} discs, {unknown_artist_count} artists):")
         print("-"*40)
         print_report(unknown_collection)
 
