@@ -1,0 +1,223 @@
+#!/usr/bin/env python3
+# Purpose:
+#   Scan FLAC files in collection for embedded images. Some streamers
+#   (e.g. Bluesound NODE N132) cannot handle images > 600kB.
+#
+#   If needed, this script replaces embedded images in all FLAC files with
+#   the contents of Folder.jpg in the same directory.
+
+
+import argparse
+import logging
+import os
+import subprocess
+import sys
+from pathlib import Path
+from typing import Iterator
+
+logger = logging.getLogger(__name__)
+
+def parse_arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Fix Embedded Art: Scan FLAC files for embedded pictures exceeding 600 kB, replacing with Folder.jpg contents from same directory"
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Verbose output",
+    )
+    parser.add_argument(
+        "-d",
+        "--debug",
+        action="store_true",
+        help="Debugging output",
+    )
+    parser.add_argument(
+        "-f",
+        "--force",
+        action="store_true",
+        help="Force replacement of album art embedded in FLAC files",
+    )
+    parser.add_argument(
+        "-t",
+        "--threshold",
+        type=int,
+        default=600,
+        help="Size threshold in kB (default: 600)",
+    )
+    parser.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="Root directory to scan",
+    )
+    return parser.parse_args()
+
+
+####################
+### Helper functions
+
+def get_embedded_picture_size(flac_file: Path) -> int:
+    """
+    Extract PICTURE data length from FLAC file using metaflac.
+    """
+    if not flac_file.is_file():
+        raise FileNotFoundError(f"get_embedded_picture_size: '{flac_file}' must point to a FLAC file")
+    try:
+        result = subprocess.run(
+            ["metaflac", "--list", "--block-type=PICTURE", str(flac_file)],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+    except FileNotFoundError:
+        logger.error("get_embedded_picture_size: metaflac not found in PATH. Please install the FLAC tools.")
+        raise
+    if result.returncode != 0:
+        logger.error("get_embedded_picture_size: metaflac failed for '%s': %s", flac_file, result.stderr.strip())
+        return 0
+
+    # There could be multiple PICTURE blocks; return the largest size
+    sizes = []
+    for line in result.stdout.split('\n'):
+        if "data length:" in line:
+            try:
+                # Parse "data length: 432519" format
+                parts = line.split("data length:")
+                size = int(parts[1].strip())
+                sizes.append(size)
+            except Exception:
+                logger.error("get_embedded_picture_size: Failed to parse picture size for '%s', line was: '%s'", flac_file, line)
+    nrpictures = len(sizes)
+    maxsize = max(sizes) if sizes else 0
+    logger.debug(f"get_embedded_picture_size: Found {nrpictures} picture(s) in '{flac_file}', max size {maxsize / 1024:.2f} kB")
+    return maxsize
+
+
+##########################
+### Walking the filesystem
+
+def walk_flac_files(root: Path) -> Iterator[Path]:
+    """
+    Yield all .flac files under the given root directory,
+    including the root itself, in sorted order.
+    """
+    root = Path(root)
+    if not root.is_dir():
+        raise NotADirectoryError(f"walk_flac_files: Root is not a directory: {root}")
+
+    # Yield FLACs in the root directory first
+    for flac in sorted(root.glob("*.flac")):
+        yield flac
+    # Then walk subdirectories in sorted order
+    for directory in sorted(p for p in root.rglob("*") if p.is_dir()):
+        for flac in sorted(directory.glob("*.flac")):
+            yield flac
+
+
+def walk_flac_files_filtered(root: Path, size_threshold: int = 600 * 1024) -> Iterator[Path]:
+    """
+    Yield all .flac files with embedded PICTURE data exceeding size_threshold
+    under the given root directory, including the root itself, in sorted order.
+    """
+    root = Path(root)
+    if not root.is_dir():
+        raise NotADirectoryError(f"walk_flac_files_filtered: Root is not a directory: {root}")
+
+    # Yield FLACs in the root directory first
+    for flac in sorted(root.glob("*.flac")):
+        if get_embedded_picture_size(flac) > size_threshold:
+            yield flac
+    # Then walk subdirectories in sorted order
+    for directory in sorted(p for p in root.rglob("*") if p.is_dir()):
+        logger.debug(f"walk_flac_files_filtered: Processing subdirectory {directory} ...")
+        for flac in sorted(directory.glob("*.flac")):
+            if get_embedded_picture_size(flac) > size_threshold:
+                yield flac
+
+
+def replace_embedded_picture(flac_file: Path):
+    """
+    For all FLAC files in flac_dir, remove current picture and replace it with Folder.jpg contents.
+    """
+    if not flac_file.is_file():
+        raise FileNotFoundError(f"replace_embedded_picture: '{flac_file}' is not a file")
+
+    flac_dir = flac_file.parent
+    if not flac_dir.is_dir():
+        raise NotADirectoryError(f"replace_embedded_picture: {flac_dir} is not a directory")
+
+    folder_jpg = flac_dir / "Folder.jpg"
+    if not folder_jpg.is_file():
+        raise FileNotFoundError(f"replace_embedded_picture: 'Folder.jpg' not found in {flac_dir}")
+
+    album_name = flac_dir.name
+    artist_name = flac_dir.parent.name
+
+    logger.info(
+        "Replacing embedded picture: '%s'/'%s', track '%s'",
+        artist_name,
+        album_name,
+        flac_file.name,
+    )
+    subprocess.run(
+        ["metaflac", "--remove", "--block-type=PICTURE", str(flac_file)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    subprocess.run(
+        ["metaflac", "--import-picture-from", str(folder_jpg), str(flac_file)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    logger.info("  ✓ Replaced embedded picture for track: '%s'", flac_file.name)
+
+
+def main():
+    root_path = Path(args.root)
+    if not root_path.is_dir():
+        raise NotADirectoryError(f"Root is not a directory: {root_path}")
+
+    threshold_kB = args.threshold
+
+    if args.force:
+        logger.info("Scanning all FLAC files ...")
+        selected_files = list(walk_flac_files(root_path))
+    else:
+        logger.info("Looking for FLAC files with embedded pictures exceeding %s kB ...", threshold_kB)
+        selected_files = list(walk_flac_files_filtered(root_path, size_threshold=threshold_kB * 1024))
+    logger.info("-" * 50)
+
+    logger.info("Total files selected: %s", len(selected_files))
+    for file in selected_files:
+        logger.debug("  - %s", file)
+
+    if selected_files:
+        logger.info("Replacing embedded pictures in FLAC files ...\n")
+        for file in selected_files:
+            try:
+                replace_embedded_picture(file)
+            except (FileNotFoundError, subprocess.CalledProcessError) as error:
+                logger.error("Failed to replace embedded picture in '%s': %s", file, error)
+                raise
+    else:
+        logger.info("Nothing to do.")
+
+
+if __name__ == "__main__":
+    args = parse_arguments()
+    level = logging.INFO
+    if args.verbose:
+        level = logging.INFO    # FIXME, redundant with default
+    elif args.debug:
+        level = logging.DEBUG
+    logging.basicConfig(level=level, format='%(levelname)s: %(message)s')
+
+    try:
+        main()
+    except KeyboardInterrupt as e:
+        logger.info("\nInterrupted")
+        sys.exit(130)

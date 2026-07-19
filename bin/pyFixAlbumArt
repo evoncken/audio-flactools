@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+# Purpose:
+#   Scan for "Folder.jpg" album art in FLAC collection. Some streamers
+#   (e.g. Bluesound NODE N132) cannot handle images > 600kB.
+#
+#   This script resizes the Folder.jpg to below 600kB (override with --threshold);
+#   the original is backed up to Folder-original.jpg
+
+import argparse
+import logging
+import os
+import sys
+from pathlib import Path
+from typing import Iterator
+try:
+    from PIL import Image
+except ImportError:
+    raise SystemExit("Pillow library is required. Install it with: 'pip install pillow' (generic) or 'brew install pillow' (macOS)")
+
+logger = logging.getLogger(__name__)
+
+
+def parse_arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Fix Album Art: Scan for 'Folder.jpg' files exceeding 600 kB (default value) and reduce their size by resizing the image. The original image is backed up as 'Folder-original.jpg'."
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Verbose output",
+    )
+    parser.add_argument(
+        "-d",
+        "--debug",
+        action="store_true",
+        help="Debugging output",
+    )
+    parser.add_argument(
+        "-t",
+        "--threshold",
+        type=int,
+        default=600,
+        help="Size threshold in kB (default: 600)",
+    )
+    parser.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="Root directory to scan",
+    )
+    return parser.parse_args()
+
+
+def scan_and_filter_folder_images(start_path=".", size_threshold: int = 600 * 1024) -> Iterator[Path]:
+    """
+    Scans current and subdirectories for JPEG files named "Folder.jpg"
+    and yields them if their file size exceeds the threshold (default: 600 kB / 614,400 bytes).
+   
+    Args:
+        start_path: Root directory to scan (default: current directory)
+    
+    Yields:
+        File paths that match criteria
+    """
+    # Recursively scan directories
+    for root, dirs, files in os.walk(start_path):
+        if "Folder.jpg" in files:
+            file_path = os.path.join(root, "Folder.jpg")
+            file_size = os.path.getsize(file_path)
+            path_obj = Path(file_path)
+            logger.debug(f"Found: {path_obj} ({file_size / 1024:.2f} kB)")
+            # Select files exceeding threshold
+            if file_size > size_threshold:
+                logger.info(f"  ✓ Selected ({file_size / 1024:.2f} kB): {path_obj}")
+                yield path_obj
+
+
+def reduce_folder_image_size(image_path: Path, size_threshold: int = 600 * 1024, reduction_factor: float = 0.99) -> Path:
+    """
+    Reduce the resolution of a Folder.jpg image until the file size is below the threshold.
+    The original image is renamed to Folder-original.jpg and the resized image is saved back to Folder.jpg.
+    """
+    if image_path.name != "Folder.jpg":
+        raise ValueError("reduce_folder_image_size only supports 'Folder.jpg' images")
+
+    if not image_path.exists():
+        raise FileNotFoundError(f"File not found: {image_path}")
+
+    original_path = image_path.with_name("Folder-original.jpg")
+    if original_path.exists():
+        logger.info("Backup already exists, not overwriting: %s", original_path)
+        source_path = image_path
+    else:
+        logger.info("Creating backup: %s", original_path)
+        image_path.rename(original_path)
+        source_path = original_path
+
+    with Image.open(source_path) as image:
+        if image.mode not in ("RGB", "L"):
+            image = image.convert("RGB")
+
+        width, height = image.size
+
+        # First attempt: try optimizing with the original dimensions to see if it reduces file size
+        resized_image = image.resize((width, height), Image.LANCZOS)
+        resized_image.save(image_path, format="JPEG", quality=95, optimize=True)
+        current_size = image_path.stat().st_size
+        if current_size <= size_threshold:
+            logger.info("  ✓ Optimized JPEG only, maintain (%d x %d) -> %.2f kB", width, height, current_size / 1024)
+        else:
+            logger.info("  ✓ Need to reduce dimensions (%d x %d) -> %.2f kB", width, height, current_size / 1024)
+            while current_size > size_threshold:
+                previous_size = (width, height)
+                width = max(1, int(width * reduction_factor))
+                height = max(1, int(height * reduction_factor))
+
+                if (width, height) == previous_size:
+                    raise RuntimeError(
+                        f"Unable to reduce image below {size_threshold} bytes for {image_path}"
+                    )
+
+                resized_image = image.resize((width, height), Image.LANCZOS)
+                resized_image.save(image_path, format="JPEG", quality=95, optimize=True)
+                current_size = image_path.stat().st_size
+                logger.info("  ✓ Trying (%d x %d) -> %.2f kB", width, height, current_size / 1024)
+
+                if current_size <= size_threshold:
+                    logger.info("  ✓ Reduced to (%d x %d) -> %.2f kB", width, height, current_size / 1024)
+                    break
+
+                image = resized_image
+
+    return image_path
+
+
+def main():
+    root_path = Path(args.root)
+    if not root_path.is_dir():
+        raise NotADirectoryError(f"Root is not a directory: {root_path}")
+
+    threshold_kB = args.threshold
+
+    logger.info(f"Scanning for Folder.jpg files exceeding {threshold_kB} kB ...")
+    selected_files = list(scan_and_filter_folder_images(start_path=root_path, size_threshold=threshold_kB * 1024))
+    logger.info("-"*50)
+
+    logger.info(f"Total files selected: {len(selected_files)}")
+    for file in selected_files:
+        logger.debug("  - %s", file)
+
+    if len(selected_files) > 0:
+        logger.info(f"Reducing file sizes of Folder.jpg files exceeding {threshold_kB} kB...\n")
+        for file in selected_files:
+            try:
+                reduce_folder_image_size(file, size_threshold=threshold_kB * 1024)
+            except Exception as error:
+                logger.error("Failed to reduce %s: %s", file, error)
+    else:
+        logger.info("Nothing to do.")
+
+
+if __name__ == "__main__":
+    args = parse_arguments()
+    level = logging.INFO
+    if args.verbose:
+        level = logging.INFO    # FIXME, redundant with default
+    elif args.debug:
+        level = logging.DEBUG
+    logging.basicConfig(level=level, format='%(levelname)s: %(message)s')
+
+    try:
+        main()
+    except KeyboardInterrupt as e:
+        logger.info("\nInterrupted")
+        sys.exit(130)
